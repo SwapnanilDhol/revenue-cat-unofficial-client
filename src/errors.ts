@@ -4,9 +4,6 @@
 
 import type { RevenueCatApiError } from "./types";
 
-/**
- * Thrown when the RevenueCat API returns a non-2xx response.
- */
 export class RevenueCatError extends Error {
   public readonly statusCode: number;
   public readonly body: RevenueCatApiError;
@@ -20,9 +17,6 @@ export class RevenueCatError extends Error {
   }
 }
 
-/**
- * Thrown when the SDK is misconfigured (missing API key, etc.).
- */
 export class RevenueCatConfigError extends Error {
   constructor(message: string) {
     super(message);

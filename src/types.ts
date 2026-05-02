@@ -1,19 +1,11 @@
 // ============================================================
-// RevenueCat REST API v1 — Type definitions
-// Derived from the RevenueCat OpenAPI 3.0 spec
+// RevenueCat REST API v2 — Type definitions
+// Derived from the RevenueCat OpenAPI 3.0 v2 spec
 // ============================================================
 
-// ── Enums / Unions ────────────────────────────────────────────
+// ── Common ───────────────────────────────────────────────────
 
-export type Platform =
-  | "ios"
-  | "android"
-  | "amazon"
-  | "macos"
-  | "uikitformac"
-  | "stripe"
-  | "roku"
-  | "paddle";
+export type Environment = "sandbox" | "production";
 
 export type Store =
   | "app_store"
@@ -25,203 +17,309 @@ export type Store =
   | "roku"
   | "paddle";
 
-export type OwnershipType = "PURCHASED" | "FAMILY_SHARED";
+export type Ownership = "purchased" | "family_shared";
 
-export type PeriodType = "normal" | "trial" | "intro";
+export type SubscriptionStatus =
+  | "trialing"
+  | "active"
+  | "expired"
+  | "in_grace_period"
+  | "in_billing_retry"
+  | "paused"
+  | "unknown"
+  | "incomplete";
 
-export type AttributionNetwork = "0" | "1" | "2" | "3" | "4" | "5";
+export type AutoRenewalStatus =
+  | "will_renew"
+  | "will_not_renew"
+  | "will_change_product"
+  | "will_pause"
+  | "requires_price_increase_consent"
+  | "has_already_renewed";
 
-export type PromotionalDuration =
-  | "daily"
-  | "three_day"
-  | "weekly"
-  | "two_week"
-  | "monthly"
-  | "two_month"
-  | "three_month"
-  | "six_month"
-  | "yearly"
-  | "lifetime";
+export type Duration = "P1W" | "P1M" | "P2M" | "P3M" | "P6M" | "P1Y";
 
-export type PaymentMode = 0 | 1 | 2;
+export type ExtendReasonCode =
+  | "undeclared"
+  | "customer_satisfaction"
+  | "other"
+  | "service_issue_or_outage";
 
-export type ExtendReasonCode = 0 | 1 | 2 | 3;
+// ── Pagination ───────────────────────────────────────────────
 
-// ── Customer Info model ──────────────────────────────────────
-
-export interface EntitlementInfo {
-  expires_date: string | null;
-  grace_period_expires_date: string | null;
-  product_identifier: string;
-  purchase_date: string;
-  /** v2 field */
-  period_type?: PeriodType;
+export interface ListResponse<T> {
+  object: "list";
+  items: T[];
+  next_page: string | null;
+  url: string;
 }
 
-export interface Entitlements {
-  [entitlementIdentifier: string]: EntitlementInfo;
+// ── Monetary ─────────────────────────────────────────────────
+
+export interface MonetaryAmount {
+  currency: string;
+  gross: number;
+  proceeds: number;
+  tax: number;
+  commission: number;
 }
 
-export interface NonSubscriptionPurchase {
-  display_name: string;
+// ── Customer ─────────────────────────────────────────────────
+
+export interface Customer {
+  object: "customer";
   id: string;
-  is_sandbox: boolean;
-  price?: {
-    amount: number;
-    currency: string;
-  };
-  purchase_date: string;
+  project_id: string;
+  first_seen_at: number;
+  last_seen_at: number | null;
+  last_seen_app_version: string | null;
+  last_seen_country: string | null;
+  last_seen_platform: string | null;
+  last_seen_platform_version: string | null;
+  active_entitlements?: ListResponse<CustomerEntitlement> | null;
+  experiment?: ExperimentEnrollment | null;
+  attributes?: ListResponse<CustomerAttribute> | null;
+}
+
+export interface CustomerEntitlement {
+  object: "customer.active_entitlement";
+  entitlement_id: string;
+  expires_at: number | null;
+}
+
+export interface CustomerAttribute {
+  object: "customer.attribute";
+  name: string;
+  value: string | null;
+  updated_at: number;
+}
+
+export interface CustomerAlias {
+  object: "customer.alias";
+  id: string;
+  created_at: number;
+}
+
+export interface ExperimentEnrollment {
+  object: string;
+  id: string;
+  variant_id: string;
+  variant_type: string;
+}
+
+// ── Subscription ─────────────────────────────────────────────
+
+export interface Subscription {
+  object: "subscription";
+  id: string;
+  customer_id: string;
+  original_customer_id: string;
+  product_id: string | null;
+  starts_at: number;
+  current_period_starts_at: number;
+  current_period_ends_at: number | null;
+  ends_at: number | null;
+  gives_access: boolean;
+  pending_payment: boolean;
+  auto_renewal_status: AutoRenewalStatus;
+  status: SubscriptionStatus;
+  total_revenue_in_usd: MonetaryAmount;
+  presented_offering_id: string | null;
+  entitlements: ListResponse<Entitlement>;
+  environment: Environment;
   store: Store;
-  store_transaction_id: string;
-}
-
-export interface NonSubscriptions {
-  [productIdentifier: string]: NonSubscriptionPurchase[];
-}
-
-export interface SubscriptionInfo {
-  auto_resume_date: string | null;
-  billing_issues_detected_at: string | null;
-  expires_date: string;
-  display_name?: string;
-  grace_period_expires_date: string | null;
-  is_sandbox: boolean;
-  original_purchase_date: string;
-  ownership_type: OwnershipType;
-  period_type: PeriodType;
-  price?: {
-    amount: number;
-    currency: string;
-  };
-  purchase_date: string;
-  refunded_at: string | null;
-  store: Store;
-  store_transaction_id: string;
-  unsubscribe_detected_at: string;
-}
-
-export interface Subscriptions {
-  [productIdentifier: string]: SubscriptionInfo;
-}
-
-export interface SubscriberAttribute {
-  value: string;
-  updated_at_ms: number;
-}
-
-export interface SubscriberAttributes {
-  [key: string]: SubscriberAttribute;
-}
-
-export interface Subscriber {
-  entitlements: Entitlements;
-  first_seen: string;
-  last_seen: string;
+  store_subscription_identifier: string;
+  ownership: Ownership;
   management_url: string | null;
-  non_subscriptions: NonSubscriptions;
-  original_app_user_id: string;
-  original_application_version: string | null;
-  original_purchase_date: string | null;
-  /** @deprecated Use non_subscriptions instead */
-  other_purchases?: Record<string, unknown>;
-  subscriber_attributes?: SubscriberAttributes;
-  subscriptions: Subscriptions;
+  pending_changes?: unknown;
+  country?: string;
 }
 
-export interface CustomerInfoResponse {
-  request_date: string;
-  request_date_ms: number;
-  subscriber: Subscriber;
+// ── Purchase ─────────────────────────────────────────────────
+
+export interface Purchase {
+  object: string;
+  id: string;
+  customer_id: string;
+  product_id: string;
+  store: Store;
+  environment: Environment;
+  purchased_at: number;
+  store_transaction_identifier: string;
+  total_revenue_in_usd: MonetaryAmount;
 }
 
-// ── Offerings model ──────────────────────────────────────────
+// ── Entitlement ──────────────────────────────────────────────
 
-export interface Package {
-  identifier: string;
-  platform_product_identifier: string;
+export interface Entitlement {
+  object: "entitlement";
+  project_id: string;
+  id: string;
+  lookup_key: string;
+  display_name: string;
+  state: "active" | "inactive";
+  created_at: number;
+  products?: ListResponse<Product>;
 }
+
+// ── Product ──────────────────────────────────────────────────
+
+export interface Product {
+  object: string;
+  id: string;
+  project_id: string;
+  store_identifier: string;
+  type: string;
+  display_name: string;
+  entitlement_ids?: string[];
+  subscription_duration?: Duration | null;
+}
+
+// ── Offering ─────────────────────────────────────────────────
 
 export interface Offering {
-  description: string;
-  identifier: string;
-  packages: Package[];
+  object: "offering";
+  id: string;
+  project_id: string;
+  lookup_key: string;
+  display_name: string;
+  description?: string;
+  state: "active" | "inactive";
+  created_at: number;
+  packages: ListResponse<Package>;
 }
 
-export interface OfferingsResponse {
-  current_offering_id: string;
-  offerings: Offering[];
+// ── Package ──────────────────────────────────────────────────
+
+export interface Package {
+  object: string;
+  id: string;
+  project_id: string;
+  display_name: string;
+  position: number;
+  products: ListResponse<Product>;
 }
 
-// ── Error model ──────────────────────────────────────────────
+// ── Invoice ──────────────────────────────────────────────────
+
+export interface Invoice {
+  object: "invoice";
+  id: string;
+  total_amount: MonetaryAmount;
+  line_items: InvoiceLineItem[];
+  issued_at: number;
+  paid_at: number | null;
+  invoice_url: string | null;
+}
+
+export interface InvoiceLineItem {
+  object: "invoice.line_item";
+  product_identifier: string;
+  product_display_name: string | null;
+  product_duration: string | null;
+  quantity: number;
+  unit_amount: MonetaryAmount;
+}
+
+// ── Project ──────────────────────────────────────────────────
+
+export interface Project {
+  object: string;
+  id: string;
+  name: string;
+  created_at: number;
+}
+
+// ── App ──────────────────────────────────────────────────────
+
+export interface App {
+  object: string;
+  id: string;
+  project_id: string;
+  name: string;
+  type: string;
+  store?: string;
+  bundle_id?: string;
+}
+
+// ── Deleted Object ───────────────────────────────────────────
+
+export interface DeletedObject {
+  object: string;
+  id: string;
+  deleted_at: number;
+}
+
+// ── Error ────────────────────────────────────────────────────
 
 export interface RevenueCatApiError {
+  object?: string;
+  type?: string;
   message: string;
-  code?: number;
-  attribute_errors?: Array<{
-    key_name: string;
-    message: string;
-  }>;
+  doc_url?: string;
+  retryable?: boolean;
+  referenced_object_ids?: string[];
 }
 
 // ── Request types ────────────────────────────────────────────
 
-export interface CreatePurchaseRequest {
-  app_user_id: string;
-  fetch_token: string;
-  product_id?: string;
-  price?: number;
-  currency?: string;
-  payment_mode?: PaymentMode;
-  introductory_price?: number;
-  /** @deprecated */
-  is_restore?: boolean;
-  presented_offering_identifier?: string;
-  attributes?: Record<
-    string,
-    {
-      value: string;
-      updated_at_ms?: number;
-    }
-  >;
+export interface CreateCustomerRequest {
+  id: string;
+  attributes?: Array<{
+    name: string;
+    value: string;
+  }>;
 }
 
 export interface GrantEntitlementRequest {
-  end_time_ms?: number;
-  /** @deprecated Use end_time_ms instead */
-  duration?: PromotionalDuration;
-  /** @deprecated */
-  start_time_ms?: number;
+  entitlement_id: string;
+  expires_at: number;
 }
 
-export interface UpdateAttributesRequest {
-  attributes: Record<
-    string,
-    {
-      value: string;
-      updated_at_ms?: number;
-    }
-  >;
+export interface RevokeEntitlementRequest {
+  entitlement_id: string;
 }
 
-export interface AddAttributionRequest {
-  data: {
-    rc_idfa?: string;
-    rc_gps_adid?: string;
-  };
-  network: AttributionNetwork;
+export interface SetCustomerAttributesRequest {
+  attributes: Array<{
+    name: string;
+    value: string | null;
+  }>;
 }
 
-export interface DeferSubscriptionRequest {
-  expiry_time_ms?: number;
-  extend_by_days?: number;
+export interface TransferCustomerRequest {
+  target_customer_id: string;
+  app_ids?: string[];
 }
 
-export interface ExtendAppleSubscriptionRequest {
+export interface AssignOfferingRequest {
+  offering_id: string | null;
+}
+
+export interface ExtendSubscriptionByDurationRequest {
   extend_by_days: number;
-  extend_reason_code: ExtendReasonCode;
+  extend_reason_code?: ExtendReasonCode;
 }
 
-export interface DeleteCustomerResponse {
-  app_user_id: string;
-  deleted: boolean;
+export interface ExtendSubscriptionUntilDateRequest {
+  extend_until_ms: number;
+  extend_reason_code?: ExtendReasonCode;
+}
+
+export interface CreateVirtualCurrencyTransactionRequest {
+  adjustments: Record<string, number>;
+  reference?: string | null;
+}
+
+export interface PaginationParams {
+  starting_after?: string;
+  limit?: number;
+}
+
+export interface ListCustomerSubscriptionsParams extends PaginationParams {
+  environment?: Environment;
+}
+
+export interface ListCustomerPurchasesParams extends PaginationParams {
+  environment?: Environment;
 }

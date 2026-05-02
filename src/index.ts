@@ -1,5 +1,5 @@
 // ============================================================
-// @passmaker/revenuecat-client — Public API
+// revenuecat-client — Public API (v2)
 // ============================================================
 
 export { RevenueCatClient } from "./client";
@@ -12,37 +12,48 @@ export {
 
 export type {
   // Enums / Unions
-  Platform,
+  Environment,
   Store,
-  OwnershipType,
-  PeriodType,
-  AttributionNetwork,
-  PromotionalDuration,
-  PaymentMode,
+  Ownership,
+  SubscriptionStatus,
+  AutoRenewalStatus,
+  Duration,
   ExtendReasonCode,
 
+  // Common
+  ListResponse,
+  MonetaryAmount,
+
   // Models
-  EntitlementInfo,
-  Entitlements,
-  NonSubscriptionPurchase,
-  NonSubscriptions,
-  SubscriptionInfo,
-  Subscriptions,
-  SubscriberAttribute,
-  SubscriberAttributes,
-  Subscriber,
-  CustomerInfoResponse,
-  Package,
+  Customer,
+  CustomerEntitlement,
+  CustomerAttribute,
+  CustomerAlias,
+  ExperimentEnrollment,
+  Subscription,
+  Purchase,
+  Entitlement,
+  Product,
   Offering,
-  OfferingsResponse,
+  Package,
+  Invoice,
+  InvoiceLineItem,
+  Project,
+  App,
+  DeletedObject,
   RevenueCatApiError,
-  DeleteCustomerResponse,
 
   // Request types
-  CreatePurchaseRequest,
+  CreateCustomerRequest,
   GrantEntitlementRequest,
-  UpdateAttributesRequest,
-  AddAttributionRequest,
-  DeferSubscriptionRequest,
-  ExtendAppleSubscriptionRequest,
+  RevokeEntitlementRequest,
+  SetCustomerAttributesRequest,
+  TransferCustomerRequest,
+  AssignOfferingRequest,
+  ExtendSubscriptionByDurationRequest,
+  ExtendSubscriptionUntilDateRequest,
+  CreateVirtualCurrencyTransactionRequest,
+  PaginationParams,
+  ListCustomerSubscriptionsParams,
+  ListCustomerPurchasesParams,
 } from "./types";

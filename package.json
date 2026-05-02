@@ -1,5 +1,5 @@
 {
-  "name": "@passmaker/revenuecat-client",
+  "name": "revenuecat-client",
   "version": "1.0.0",
   "description": "Type-safe RevenueCat REST API v1 client for Node.js",
   "main": "dist/index.js",
@@ -25,7 +25,7 @@
     "api-client",
     "typescript"
   ],
-  "author": "Swapnanil Dhol",
+  "author": "Swapnanil Dhol <swapnanildhol@gmail.com>",
   "license": "MIT",
   "devDependencies": {
     "typescript": "^5.7.0"

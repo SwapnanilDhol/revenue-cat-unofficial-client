@@ -214,9 +214,6 @@ const pkg = await client.getPackage('pkge_123');
 ### Convenience Helpers
 
 ```js
-// Check if user has any active entitlement
-const isPro = await client.isProUser('customer-id');
-
 // Check specific entitlement
 const hasPro = await client.hasEntitlement('customer-id', 'pro_entitlement_id');
 ```

@@ -963,20 +963,6 @@ export class RevenueCatClient {
     return entitlements.items.some((e) => e.entitlement_id === entitlementId);
   }
 
-  /**
-   * Check if a user is a "Pro" user by verifying they have active entitlements
-   * OR active subscriptions that give access.
-   */
-  async isProUser(customerId: string): Promise<boolean> {
-    // Check active entitlements first (fastest)
-    const entitlements = await this.getCustomerActiveEntitlements(customerId);
-    if (entitlements.items.length > 0) return true;
-
-    // Fall back to checking subscriptions
-    const subs = await this.getCustomerSubscriptions(customerId);
-    return subs.items.some((sub) => sub.gives_access);
-  }
-
   // ── Internal HTTP layer ───────────────────────────────────
 
   private async request<T>(opts: RequestOptions): Promise<T> {

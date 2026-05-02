@@ -1,5 +1,5 @@
 {
-  "name": "revenuecat-client",
+  "name": "revenue-cat-unofficial-client",
   "version": "2.0.0",
   "description": "Type-safe RevenueCat REST API v2 client for Node.js",
   "main": "dist/index.js",

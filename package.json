@@ -32,6 +32,7 @@
   "author": "Swapnanil Dhol <swapnanildhol@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.1.5",
     "typescript": "^5.7.0",
     "vitest": "^4.1.5"

@@ -441,6 +441,17 @@ export class RevenueCatClient {
     });
   }
 
+  async restorePurchaseByOrderId(
+    customerId: string,
+    params: { order_id: string }
+  ): Promise<Customer> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/customers/${encodeURIComponent(customerId)}/actions/restore_purchase_by_order_id`,
+      body: params,
+    });
+  }
+
   // ── Entitlements ──────────────────────────────────────────
 
   async listEntitlements(params?: PaginationParams): Promise<ListResponse<Entitlement>> {
@@ -458,9 +469,74 @@ export class RevenueCatClient {
     });
   }
 
+  async createEntitlement(params: {
+    lookup_key: string;
+    display_name: string;
+  }): Promise<Entitlement> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/entitlements`,
+      body: params,
+    });
+  }
+
+  async updateEntitlement(
+    entitlementId: string,
+    params: { display_name: string }
+  ): Promise<Entitlement> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/entitlements/${encodeURIComponent(entitlementId)}`,
+      body: params,
+    });
+  }
+
+  async deleteEntitlement(entitlementId: string): Promise<DeletedObject> {
+    return this.request({
+      method: "DELETE",
+      path: `/projects/${this.pId}/entitlements/${encodeURIComponent(entitlementId)}`,
+    });
+  }
+
+  async archiveEntitlement(entitlementId: string): Promise<Entitlement> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/entitlements/${encodeURIComponent(entitlementId)}/actions/archive`,
+    });
+  }
+
+  async unarchiveEntitlement(entitlementId: string): Promise<Entitlement> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/entitlements/${encodeURIComponent(entitlementId)}/actions/unarchive`,
+    });
+  }
+
+  async attachProductsToEntitlement(
+    entitlementId: string,
+    params: { product_ids: string[] }
+  ): Promise<Entitlement> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/entitlements/${encodeURIComponent(entitlementId)}/actions/attach_products`,
+      body: params,
+    });
+  }
+
+  async detachProductsFromEntitlement(
+    entitlementId: string,
+    params: { product_ids: string[] }
+  ): Promise<Entitlement> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/entitlements/${encodeURIComponent(entitlementId)}/actions/detach_products`,
+      body: params,
+    });
+  }
+
   // ── Products ──────────────────────────────────────────────
 
-  async listProducts(params?: PaginationParams): Promise<ListResponse<Product>> {
+  async listProducts(params?: PaginationParams & { app_id?: string }): Promise<ListResponse<Product>> {
     return this.request({
       method: "GET",
       path: `/projects/${this.pId}/products`,
@@ -472,6 +548,38 @@ export class RevenueCatClient {
     return this.request({
       method: "GET",
       path: `/projects/${this.pId}/products/${encodeURIComponent(productId)}`,
+    });
+  }
+
+  async updateProduct(
+    productId: string,
+    params: { display_name?: string }
+  ): Promise<Product> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/products/${encodeURIComponent(productId)}`,
+      body: params,
+    });
+  }
+
+  async deleteProduct(productId: string): Promise<DeletedObject> {
+    return this.request({
+      method: "DELETE",
+      path: `/projects/${this.pId}/products/${encodeURIComponent(productId)}`,
+    });
+  }
+
+  async archiveProduct(productId: string): Promise<Product> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/products/${encodeURIComponent(productId)}/actions/archive`,
+    });
+  }
+
+  async unarchiveProduct(productId: string): Promise<Product> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/products/${encodeURIComponent(productId)}/actions/unarchive`,
     });
   }
 
@@ -492,12 +600,348 @@ export class RevenueCatClient {
     });
   }
 
+  async createOffering(params: {
+    lookup_key: string;
+    display_name: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<Offering> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/offerings`,
+      body: params,
+    });
+  }
+
+  async updateOffering(
+    offeringId: string,
+    params: {
+      display_name?: string;
+      is_current?: boolean;
+      metadata?: Record<string, unknown>;
+    }
+  ): Promise<Offering> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/offerings/${encodeURIComponent(offeringId)}`,
+      body: params,
+    });
+  }
+
+  async deleteOffering(offeringId: string): Promise<DeletedObject> {
+    return this.request({
+      method: "DELETE",
+      path: `/projects/${this.pId}/offerings/${encodeURIComponent(offeringId)}`,
+    });
+  }
+
+  async archiveOffering(offeringId: string): Promise<Offering> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/offerings/${encodeURIComponent(offeringId)}/actions/archive`,
+    });
+  }
+
+  async unarchiveOffering(
+    offeringId: string,
+    params?: { unarchive_referenced_entities?: boolean }
+  ): Promise<Offering> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/offerings/${encodeURIComponent(offeringId)}/actions/unarchive`,
+      body: params,
+    });
+  }
+
   // ── Packages ──────────────────────────────────────────────
+
+  async listPackages(
+    offeringId: string,
+    params?: PaginationParams
+  ): Promise<ListResponse<Package>> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/offerings/${encodeURIComponent(offeringId)}/packages`,
+      query: toQuery(params),
+    });
+  }
 
   async getPackage(packageId: string): Promise<Package> {
     return this.request({
       method: "GET",
       path: `/projects/${this.pId}/packages/${encodeURIComponent(packageId)}`,
+    });
+  }
+
+  async createPackage(
+    offeringId: string,
+    params: {
+      lookup_key: string;
+      display_name: string;
+      position?: number;
+    }
+  ): Promise<Package> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/offerings/${encodeURIComponent(offeringId)}/packages`,
+      body: params,
+    });
+  }
+
+  async updatePackage(
+    packageId: string,
+    params: {
+      display_name?: string;
+      position?: number;
+    }
+  ): Promise<Package> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/packages/${encodeURIComponent(packageId)}`,
+      body: params,
+    });
+  }
+
+  async deletePackage(packageId: string): Promise<DeletedObject> {
+    return this.request({
+      method: "DELETE",
+      path: `/projects/${this.pId}/packages/${encodeURIComponent(packageId)}`,
+    });
+  }
+
+  async attachProductsToPackage(
+    packageId: string,
+    params: {
+      products: Array<{
+        product_id: string;
+        eligibility_criteria?: "all" | "google_sdk_lt_6" | "google_sdk_ge_6";
+      }>;
+    }
+  ): Promise<Package> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/packages/${encodeURIComponent(packageId)}/actions/attach_products`,
+      body: params,
+    });
+  }
+
+  async detachProductsFromPackage(
+    packageId: string,
+    params: { product_ids: string[] }
+  ): Promise<Package> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/packages/${encodeURIComponent(packageId)}/actions/detach_products`,
+      body: params,
+    });
+  }
+
+  // ── Paywalls ──────────────────────────────────────────────
+
+  async listPaywalls(params?: PaginationParams): Promise<ListResponse<unknown>> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/paywalls`,
+      query: toQuery(params),
+    });
+  }
+
+  async getPaywall(paywallId: string): Promise<unknown> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/paywalls/${encodeURIComponent(paywallId)}`,
+    });
+  }
+
+  async createPaywall(params: { offering_id: string }): Promise<unknown> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/paywalls`,
+      body: params,
+    });
+  }
+
+  async deletePaywall(paywallId: string): Promise<DeletedObject> {
+    return this.request({
+      method: "DELETE",
+      path: `/projects/${this.pId}/paywalls/${encodeURIComponent(paywallId)}`,
+    });
+  }
+
+  // ── Virtual Currencies ────────────────────────────────────
+
+  async updateVirtualCurrencyBalance(
+    customerId: string,
+    params: { adjustments: Record<string, number>; reference?: string | null }
+  ): Promise<unknown> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/customers/${encodeURIComponent(customerId)}/virtual_currencies/update_balance`,
+      body: params,
+    });
+  }
+
+  // ── Apps ──────────────────────────────────────────────────
+
+  async getApp(appId: string): Promise<App> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/apps/${encodeURIComponent(appId)}`,
+    });
+  }
+
+  async createApp(params: Record<string, unknown>): Promise<App> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/apps`,
+      body: params,
+    });
+  }
+
+  async updateApp(appId: string, params: Record<string, unknown>): Promise<App> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/apps/${encodeURIComponent(appId)}`,
+      body: params,
+    });
+  }
+
+  async deleteApp(appId: string): Promise<DeletedObject> {
+    return this.request({
+      method: "DELETE",
+      path: `/projects/${this.pId}/apps/${encodeURIComponent(appId)}`,
+    });
+  }
+
+  async getAppStoreKitConfig(appId: string): Promise<unknown> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/apps/${encodeURIComponent(appId)}/store_kit_config`,
+    });
+  }
+
+  async listAppPublicApiKeys(appId: string): Promise<ListResponse<unknown>> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/apps/${encodeURIComponent(appId)}/public_api_keys`,
+    });
+  }
+
+  // ── Audit Logs ────────────────────────────────────────────
+
+  async listAuditLogs(params?: {
+    starting_after?: string;
+    limit?: number;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<ListResponse<unknown>> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/audit_logs`,
+      query: toQuery(params),
+    });
+  }
+
+  // ── Collaborators ────────────────────────────────────────
+
+  async listCollaborators(params?: PaginationParams): Promise<ListResponse<unknown>> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/collaborators`,
+      query: toQuery(params),
+    });
+  }
+
+  // ── Webhook Integrations ─────────────────────────────────
+
+  async listWebhookIntegrations(params?: PaginationParams): Promise<ListResponse<unknown>> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/integrations/webhooks`,
+      query: toQuery(params),
+    });
+  }
+
+  async getWebhookIntegration(webhookId: string): Promise<unknown> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/integrations/webhooks/${encodeURIComponent(webhookId)}`,
+    });
+  }
+
+  async createWebhookIntegration(params: Record<string, unknown>): Promise<unknown> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/integrations/webhooks`,
+      body: params,
+    });
+  }
+
+  async updateWebhookIntegration(
+    webhookId: string,
+    params: Record<string, unknown>
+  ): Promise<unknown> {
+    return this.request({
+      method: "POST",
+      path: `/projects/${this.pId}/integrations/webhooks/${encodeURIComponent(webhookId)}`,
+      body: params,
+    });
+  }
+
+  async deleteWebhookIntegration(webhookId: string): Promise<DeletedObject> {
+    return this.request({
+      method: "DELETE",
+      path: `/projects/${this.pId}/integrations/webhooks/${encodeURIComponent(webhookId)}`,
+    });
+  }
+
+  // ── Charts & Metrics ─────────────────────────────────────
+
+  async getOverviewMetrics(params?: { currency?: string }): Promise<unknown> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/metrics/overview`,
+      query: toQuery(params),
+    });
+  }
+
+  async getChartData(
+    chartName: string,
+    params?: Record<string, unknown>
+  ): Promise<unknown> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/charts/${encodeURIComponent(chartName)}`,
+      query: toQuery(params),
+    });
+  }
+
+  async getChartOptions(chartName: string, params?: { realtime?: boolean }): Promise<unknown> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/charts/${encodeURIComponent(chartName)}/options`,
+      query: toQuery(params),
+    });
+  }
+
+  // ── Search ───────────────────────────────────────────────
+
+  async searchSubscriptions(
+    storeSubscriptionIdentifier: string
+  ): Promise<ListResponse<Subscription>> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/subscriptions`,
+      query: { store_subscription_identifier: storeSubscriptionIdentifier },
+    });
+  }
+
+  async searchPurchases(
+    storePurchaseIdentifier: string
+  ): Promise<ListResponse<Purchase>> {
+    return this.request({
+      method: "GET",
+      path: `/projects/${this.pId}/purchases`,
+      query: { store_purchase_identifier: storePurchaseIdentifier },
     });
   }
 

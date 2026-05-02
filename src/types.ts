@@ -323,3 +323,280 @@ export interface ListCustomerSubscriptionsParams extends PaginationParams {
 export interface ListCustomerPurchasesParams extends PaginationParams {
   environment?: Environment;
 }
+
+// ── Request types (missing from spec coverage) ──────────────
+
+export interface RestorePurchaseByOrderIdRequest {
+  order_id: string;
+}
+
+export interface UpdateVirtualCurrencyBalanceRequest {
+  adjustments: Record<string, number>;
+  reference?: string | null;
+}
+
+export interface CreateEntitlementRequest {
+  lookup_key: string;
+  display_name: string;
+}
+
+export interface UpdateEntitlementRequest {
+  display_name: string;
+}
+
+export interface AttachProductsToEntitlementRequest {
+  product_ids: string[];
+}
+
+export interface DetachProductsFromEntitlementRequest {
+  product_ids: string[];
+}
+
+export interface CreateOfferingRequest {
+  lookup_key: string;
+  display_name: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateOfferingRequest {
+  display_name?: string;
+  is_current?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreatePackageRequest {
+  lookup_key: string;
+  display_name: string;
+  position?: number;
+}
+
+export interface UpdatePackageRequest {
+  display_name?: string;
+  position?: number;
+}
+
+export interface AttachProductsToPackageRequest {
+  products: Array<{
+    product_id: string;
+    eligibility_criteria?: "all" | "google_sdk_lt_6" | "google_sdk_ge_6";
+  }>;
+}
+
+export interface DetachProductsFromPackageRequest {
+  product_ids: string[];
+}
+
+export interface CreatePaywallRequest {
+  offering_id: string;
+}
+
+export interface CreateProductRequest {
+  store_identifier: string;
+  app_id: string;
+  type: "subscription" | "one_time" | "consumable" | "non_consumable" | "non_renewing_subscription";
+  display_name?: string;
+  subscription?: {
+    duration: Duration;
+  };
+  title?: string;
+}
+
+export interface UpdateProductRequest {
+  display_name?: string;
+}
+
+export interface CreateVirtualCurrencyRequest {
+  code: string;
+  name: string;
+  description?: string;
+  product_grants?: Array<{
+    product_ids: string[];
+    amount: number;
+    trial_amount?: number;
+    expire_at_cycle_end?: boolean;
+  }>;
+}
+
+export interface UpdateVirtualCurrencyRequest {
+  name?: string;
+  description?: string;
+  product_grants?: Array<{
+    product_ids: string[];
+    amount: number;
+    trial_amount?: number;
+    expire_at_cycle_end?: boolean;
+  }>;
+}
+
+export interface CreateWebhookIntegrationRequest {
+  name: string;
+  url: string;
+  authorization_header?: string;
+  environment?: "production" | "sandbox";
+  event_types?: string[];
+  app_id?: string;
+}
+
+export interface UpdateWebhookIntegrationRequest {
+  name?: string;
+  url?: string;
+  authorization_header?: string | null;
+  environment?: "production" | "sandbox" | null;
+  event_types?: string[] | null;
+  app_id?: string | null;
+}
+
+// ── Response types (missing) ─────────────────────────────────
+
+export interface Transfer {
+  object: "transfer";
+  source_customer: Customer;
+  target_customer: Customer;
+}
+
+export interface AuthenticatedManagementUrl {
+  object: "authenticated_management_url";
+  management_url: string | null;
+}
+
+export interface OverviewMetrics {
+  object: "overview_metrics";
+  metrics: OverviewMetric[];
+}
+
+export interface OverviewMetric {
+  object: "overview_metric";
+  id: string;
+  name: string;
+  description: string;
+  unit: string;
+  period: string;
+  value: number;
+  last_updated_at: number | null;
+  last_updated_at_iso8601: string | null;
+}
+
+export interface ChartData {
+  object: "chart_data";
+  category: string;
+  display_type: string;
+  display_name: string;
+  description: string;
+  documentation_link?: string;
+  last_computed_at?: number;
+  start_date?: number;
+  end_date?: number;
+  yaxis_currency?: string;
+  filtering_allowed: boolean;
+  segmenting_allowed: boolean;
+  resolution: string;
+  values: unknown[];
+  summary?: Record<string, unknown>;
+  yaxis: string;
+  segments?: Array<{ id: string; display_name: string }>;
+  segments_limit?: number;
+  measures?: unknown[];
+  user_selectors?: Record<string, string>;
+  unsupported_params?: {
+    filters?: string[];
+    segment?: string | null;
+  };
+}
+
+export interface ChartOptions {
+  object: "chart_options";
+  resolutions: Array<{ id: string; display_name: string }>;
+  segments: Array<{ id: string; display_name: string; group_display_name?: string }>;
+  filters: Array<{
+    id: string;
+    display_name: string;
+    group_display_name?: string;
+    options: Array<{ id: string; display_name: string }>;
+  }>;
+  user_selectors?: Record<string, {
+    default?: string;
+    display_name?: string;
+    options?: Array<{ id: string; display_name: string }>;
+  }>;
+}
+
+export interface WebhookIntegration {
+  object: "webhook_integration";
+  id: string;
+  project_id: string;
+  name: string;
+  url: string;
+  environment: "production" | "sandbox" | null;
+  event_types: string[] | null;
+  app_id: string | null;
+  created_at: number;
+}
+
+export interface Collaborator {
+  object: "collaborator";
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+  accepted_at: number | null;
+  has_mfa: boolean;
+}
+
+export interface AuditLog {
+  object: "audit_log";
+  id: string;
+  project_id: string;
+  action_type: string;
+  target_type: string;
+  target_identifier: string;
+  actor_type: "user" | "system" | "api_key" | "oauth_client";
+  actor_identifier: string;
+  occurred_at: number;
+  additional_data?: Record<string, unknown>;
+}
+
+export interface PublicApiKey {
+  object: "public_api_key";
+  id: string;
+  key: string;
+  environment: "production" | "sandbox";
+  app_id: string;
+  created_at: number;
+}
+
+export interface StoreKitConfigFile {
+  object: "store_kit_config_file";
+  contents: Record<string, unknown>;
+}
+
+export interface SubscriptionTransaction {
+  object: "subscription_transaction";
+  id: string;
+  purchased_at: number;
+  product_store_identifier: string;
+  revenue_in_local_currency?: MonetaryAmount;
+  revenue_in_usd?: MonetaryAmount;
+  expiration_date?: number;
+  effective_expiration_date?: number;
+}
+
+export interface ListSubscriptionsParams extends PaginationParams {
+  store_subscription_identifier?: string;
+}
+
+export interface ListPurchasesParams extends PaginationParams {
+  store_purchase_identifier?: string;
+}
+
+export interface GetChartDataParams {
+  realtime?: boolean;
+  filters?: string;
+  selectors?: string;
+  aggregate?: string[];
+  currency?: string;
+  resolution?: string;
+  start_date?: string;
+  end_date?: string;
+  segment?: string;
+  limit_num_segments?: number;
+}

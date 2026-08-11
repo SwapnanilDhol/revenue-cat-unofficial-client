@@ -45,12 +45,13 @@ describe('RevenueCatError', () => {
       referenced_object_ids: ['prod_123'],
     };
 
-    const error = new RevenueCatError(429, errorBody);
+    const error = new RevenueCatError(429, errorBody, 1000);
 
     expect(error.body.type).toBe('rate_limit_error');
     expect(error.body.retryable).toBe(true);
     expect(error.body.backoff_ms).toBe(1000);
     expect(error.body.referenced_object_ids).toEqual(['prod_123']);
+    expect(error.retryAfterMs).toBe(1000);
   });
 });
 

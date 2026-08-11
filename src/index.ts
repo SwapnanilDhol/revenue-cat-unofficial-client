@@ -8,6 +8,8 @@ export type { RevenueCatClientOptions } from "./client";
 export {
   RevenueCatError,
   RevenueCatConfigError,
+  RevenueCatTransportError,
+  RevenueCatResponseTooLargeError,
 } from "./errors";
 
 export type {

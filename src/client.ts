@@ -32,7 +32,12 @@ import type {
   ListCustomerSubscriptionsParams,
   ListCustomerPurchasesParams,
 } from "./types";
-import { RevenueCatError, RevenueCatConfigError } from "./errors";
+import {
+  RevenueCatError,
+  RevenueCatConfigError,
+  RevenueCatResponseTooLargeError,
+  RevenueCatTransportError,
+} from "./errors";
 
 const BASE_URL = "https://api.revenuecat.com/v2";
 
@@ -46,6 +51,16 @@ export interface RevenueCatClientOptions {
    * @default "https://api.revenuecat.com/v2"
    */
   baseUrl?: string;
+  /** Fetch implementation. Inject this for tests or non-Node runtimes. */
+  fetch?: typeof globalThis.fetch;
+  /** Timeout applied to each HTTP attempt. @default 10000 */
+  timeoutMs?: number;
+  /** Maximum attempts for retryable GET requests. @default 2 */
+  maxAttempts?: number;
+  /** Largest server-directed delay the client will wait through. @default 5000 */
+  maxRetryDelayMs?: number;
+  /** Maximum JSON response body size. @default 1048576 */
+  maxResponseBytes?: number;
 }
 
 type RequestOptions = {
@@ -60,6 +75,11 @@ export class RevenueCatClient {
   private readonly apiKey: string;
   private readonly projectId: string;
   private readonly baseUrl: string;
+  private readonly fetchImpl: typeof globalThis.fetch;
+  private readonly timeoutMs: number;
+  private readonly maxAttempts: number;
+  private readonly maxRetryDelayMs: number;
+  private readonly maxResponseBytes: number;
 
   constructor(options: RevenueCatClientOptions) {
     if (!options.apiKey) {
@@ -75,6 +95,11 @@ export class RevenueCatClient {
     this.apiKey = options.apiKey;
     this.projectId = options.projectId;
     this.baseUrl = options.baseUrl ?? BASE_URL;
+    this.fetchImpl = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
+    this.timeoutMs = positiveInteger(options.timeoutMs ?? 10_000, "timeoutMs");
+    this.maxAttempts = positiveInteger(options.maxAttempts ?? 2, "maxAttempts");
+    this.maxRetryDelayMs = nonNegativeInteger(options.maxRetryDelayMs ?? 5_000, "maxRetryDelayMs");
+    this.maxResponseBytes = positiveInteger(options.maxResponseBytes ?? 1_048_576, "maxResponseBytes");
   }
 
   // ── Convenience factory ───────────────────────────────────
@@ -289,14 +314,11 @@ export class RevenueCatClient {
     invoiceId: string
   ): Promise<Blob> {
     const url = `${this.baseUrl}/projects/${this.pId}/customers/${encodeURIComponent(customerId)}/invoices/${encodeURIComponent(invoiceId)}/file`;
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${this.apiKey}` },
+    const response = await this.execute({
+      method: "GET",
+      path: url,
+      headers: { Accept: "application/octet-stream" },
     });
-    if (!response.ok) {
-      let errorBody: RevenueCatApiError = { message: response.statusText };
-      try { errorBody = (await response.json()) as RevenueCatApiError; } catch { /* ignore */ }
-      throw new RevenueCatError(response.status, errorBody);
-    }
     return response.blob() as Promise<Blob>;
   }
 
@@ -951,51 +973,24 @@ export class RevenueCatClient {
    * Check if a customer has any active entitlements.
    */
   async hasActiveEntitlements(customerId: string): Promise<boolean> {
-    const entitlements = await this.getCustomerActiveEntitlements(customerId);
-    return entitlements.items.length > 0;
+    return this.someActiveEntitlement(customerId, () => true);
   }
 
   /**
    * Check if a customer has a specific active entitlement by entitlement_id.
    */
   async hasEntitlement(customerId: string, entitlementId: string): Promise<boolean> {
-    const entitlements = await this.getCustomerActiveEntitlements(customerId);
-    return entitlements.items.some((e) => e.entitlement_id === entitlementId);
+    return this.someActiveEntitlement(
+      customerId,
+      (entitlement) => entitlement.entitlement_id === entitlementId
+    );
   }
 
   // ── Internal HTTP layer ───────────────────────────────────
 
   private async request<T>(opts: RequestOptions): Promise<T> {
-    const url = this.buildUrl(opts);
-
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${this.apiKey}`,
-      "Content-Type": "application/json",
-      ...opts.headers,
-    };
-
-    const fetchOptions: RequestInit = {
-      method: opts.method,
-      headers,
-    };
-
-    if (opts.body !== undefined) {
-      fetchOptions.body = JSON.stringify(opts.body);
-    }
-
-    const response = await fetch(url, fetchOptions);
-
-    if (!response.ok) {
-      let errorBody: RevenueCatApiError = { message: response.statusText };
-      try {
-        errorBody = (await response.json()) as RevenueCatApiError;
-      } catch {
-        // use default
-      }
-      throw new RevenueCatError(response.status, errorBody);
-    }
-
-    const text = await response.text();
+    const response = await this.execute(opts);
+    const text = await readResponseText(response, this.maxResponseBytes);
     if (!text || text.trim() === "") {
       return {} as T;
     }
@@ -1004,21 +999,81 @@ export class RevenueCatClient {
 
   /** For endpoints that return 200 with no body. */
   private async requestEmpty(opts: RequestOptions): Promise<void> {
-    const url = this.buildUrl(opts);
+    await this.execute(opts);
+  }
+
+  private async execute(opts: RequestOptions): Promise<Response> {
+    const url = opts.path.startsWith("http") ? opts.path : this.buildUrl(opts);
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.apiKey}`,
       "Content-Type": "application/json",
       ...opts.headers,
     };
-    const fetchOptions: RequestInit = { method: opts.method, headers };
-    if (opts.body !== undefined) fetchOptions.body = JSON.stringify(opts.body);
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
-    const response = await fetch(url, fetchOptions);
-    if (!response.ok) {
-      let errorBody: RevenueCatApiError = { message: response.statusText };
-      try { errorBody = (await response.json()) as RevenueCatApiError; } catch { /* ignore */ }
-      throw new RevenueCatError(response.status, errorBody);
+      try {
+        const response = await this.fetchImpl(url, {
+          method: opts.method,
+          headers,
+          body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+          signal: controller.signal,
+        });
+
+        if (response.ok) return response;
+
+        const error = await revenueCatError(response, this.maxResponseBytes);
+        const canRetry =
+          opts.method === "GET" &&
+          attempt < this.maxAttempts &&
+          isRetryable(error) &&
+          (error.retryAfterMs ?? retryDelayForAttempt(attempt)) <= this.maxRetryDelayMs;
+
+        if (!canRetry) throw error;
+        await delay(error.retryAfterMs ?? retryDelayForAttempt(attempt));
+      } catch (error) {
+        if (error instanceof RevenueCatError || error instanceof RevenueCatResponseTooLargeError) {
+          throw error;
+        }
+        if (opts.method === "GET" && attempt < this.maxAttempts) {
+          await delay(retryDelayForAttempt(attempt));
+          continue;
+        }
+        throw new RevenueCatTransportError("RevenueCat request failed.", { cause: error });
+      } finally {
+        clearTimeout(timeout);
+      }
     }
+
+    throw new RevenueCatTransportError("RevenueCat request exhausted all attempts.");
+  }
+
+  private async someActiveEntitlement(
+    customerId: string,
+    predicate: (entitlement: CustomerEntitlement) => boolean
+  ): Promise<boolean> {
+    let startingAfter: string | undefined;
+    const seenCursors = new Set<string>();
+
+    for (let pageNumber = 0; pageNumber < 100; pageNumber += 1) {
+      const page = await this.getCustomerActiveEntitlements(customerId, {
+        limit: 100,
+        starting_after: startingAfter,
+      });
+      if (page.items.some(predicate)) return true;
+      if (!page.next_page) return false;
+
+      const nextUrl = new URL(page.next_page, this.baseUrl);
+      const cursor = nextUrl.searchParams.get("starting_after");
+      if (!cursor || seenCursors.has(cursor)) {
+        throw new RevenueCatTransportError("RevenueCat returned an invalid pagination cursor.");
+      }
+      seenCursors.add(cursor);
+      startingAfter = cursor;
+    }
+
+    throw new RevenueCatTransportError("RevenueCat pagination exceeded 100 pages.");
   }
 
   private buildUrl(opts: RequestOptions): string {
@@ -1053,4 +1108,92 @@ function toQuery(
     }
   }
   return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function positiveInteger(value: number, name: string): number {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new RevenueCatConfigError(`${name} must be a positive integer.`);
+  }
+  return value;
+}
+
+function nonNegativeInteger(value: number, name: string): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new RevenueCatConfigError(`${name} must be a non-negative integer.`);
+  }
+  return value;
+}
+
+async function revenueCatError(
+  response: Response,
+  maximumBytes: number
+): Promise<RevenueCatError> {
+  let body: RevenueCatApiError = { message: response.statusText };
+  try {
+    const text = await readResponseText(response, maximumBytes);
+    if (text) body = JSON.parse(text) as RevenueCatApiError;
+  } catch (error) {
+    if (error instanceof RevenueCatResponseTooLargeError) throw error;
+  }
+
+  const retryAfterMs = parseRetryAfter(response.headers.get("Retry-After")) ?? body.backoff_ms;
+  return new RevenueCatError(response.status, body, retryAfterMs);
+}
+
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1_000);
+  const date = Date.parse(value);
+  if (Number.isNaN(date)) return undefined;
+  return Math.max(0, date - Date.now());
+}
+
+function isRetryable(error: RevenueCatError): boolean {
+  return error.body.retryable === true || [423, 429, 500, 502, 503, 504].includes(error.statusCode);
+}
+
+function retryDelayForAttempt(attempt: number): number {
+  return 250 * 2 ** (attempt - 1);
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function readResponseText(response: Response, maximumBytes: number): Promise<string> {
+  const contentLength = Number(response.headers.get("Content-Length"));
+  if (Number.isFinite(contentLength) && contentLength > maximumBytes) {
+    throw new RevenueCatResponseTooLargeError(maximumBytes);
+  }
+
+  if (!response.body) {
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > maximumBytes) {
+      throw new RevenueCatResponseTooLargeError(maximumBytes);
+    }
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maximumBytes) {
+      await reader.cancel();
+      throw new RevenueCatResponseTooLargeError(maximumBytes);
+    }
+    chunks.push(value);
+  }
+
+  const output = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(output);
 }

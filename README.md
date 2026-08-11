@@ -29,6 +29,27 @@ const client = new RevenueCatClient({
 });
 ```
 
+The transport is safe by default: requests time out after 10 seconds, retryable reads get one
+bounded retry, server-directed delays above 5 seconds are surfaced to the caller, and JSON
+responses are limited to 1 MiB. All limits are configurable, and `fetch` can be injected for
+Workers, tests, or custom transports:
+
+```js
+const client = new RevenueCatClient({
+  apiKey: env.REVENUECAT_API_KEY,
+  projectId: env.REVENUECAT_PROJECT_ID,
+  fetch,
+  timeoutMs: 8_000,
+  maxAttempts: 2,
+  maxRetryDelayMs: 5_000,
+  maxResponseBytes: 1_048_576,
+});
+```
+
+`RevenueCatError.retryAfterMs` exposes RevenueCat's `Retry-After`/`backoff_ms` guidance when a
+request is not retried. Automatic retries are limited to idempotent `GET` requests; mutations are
+never replayed by the client.
+
 ## API
 
 ### Customers
@@ -57,6 +78,9 @@ const purchases = await client.getCustomerPurchases('customer-id-123');
 
 // Get customer active entitlements
 const entitlements = await client.getCustomerActiveEntitlements('customer-id-123');
+
+// Convenience checks follow every pagination cursor, not only the first page.
+const isPro = await client.hasEntitlement('customer-id-123', 'ent_pro');
 ```
 
 ### Customer Actions

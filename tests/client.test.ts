@@ -25,17 +25,24 @@ function createOkResponse<T>(data: T, status = 200) {
   return {
     ok: true,
     status,
+    headers: new Headers(),
     json: () => Promise.resolve(data),
     text: () => Promise.resolve(JSON.stringify(data)),
   } as unknown as Response;
 }
 
-function createErrorResponse(error: RevenueCatApiError, status: number) {
+function createErrorResponse(
+  error: RevenueCatApiError,
+  status: number,
+  headers = new Headers()
+) {
   return {
     ok: false,
     status,
     statusText: error.message,
+    headers,
     json: () => Promise.resolve(error),
+    text: () => Promise.resolve(JSON.stringify(error)),
   } as unknown as Response;
 }
 
@@ -68,6 +75,28 @@ describe('RevenueCatClient', () => {
     it('uses custom baseUrl when provided', () => {
       const c = createMockClientWithBaseUrl('http://localhost:3000');
       expect(c).toBeInstanceOf(RevenueCatClient);
+    });
+
+    it('uses an injected fetch implementation', async () => {
+      const injectedFetch = vi.fn().mockResolvedValue(
+        createOkResponse({ object: 'list', items: [], next_page: null, url: '' })
+      );
+      const c = new RevenueCatClient({
+        apiKey: TEST_API_KEY,
+        projectId: TEST_PROJECT_ID,
+        fetch: injectedFetch,
+      });
+
+      await c.listCustomers();
+      expect(injectedFetch).toHaveBeenCalledOnce();
+    });
+
+    it('rejects invalid transport limits', () => {
+      expect(() => new RevenueCatClient({
+        apiKey: TEST_API_KEY,
+        projectId: TEST_PROJECT_ID,
+        timeoutMs: 0,
+      })).toThrow('timeoutMs must be a positive integer');
     });
   });
 
@@ -1085,6 +1114,22 @@ describe('RevenueCatClient', () => {
         expect(err.body.doc_url).toBe('https://errors.rev.cat/resource-missing');
       }
     });
+
+    it('rejects oversized JSON responses', async () => {
+      const limitedClient = new RevenueCatClient({
+        apiKey: TEST_API_KEY,
+        projectId: TEST_PROJECT_ID,
+        maxResponseBytes: 8,
+      });
+      (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+        createOkResponse({ message: 'larger than eight bytes' })
+      );
+
+      await expect(limitedClient.listCustomers()).rejects.toMatchObject({
+        name: 'RevenueCatResponseTooLargeError',
+        maximumBytes: 8,
+      });
+    });
   });
 
   describe('Authorization Header', () => {
@@ -1208,5 +1253,41 @@ describe('Convenience helpers', () => {
     const result = await client.hasEntitlement('cust_123', 'ent_premium');
 
     expect(result).toBe(false);
+  });
+
+  it('hasEntitlement follows RevenueCat next_page cursors', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(createOkResponse({
+        object: 'list',
+        items: [{ object: 'customer.active_entitlement', entitlement_id: 'ent_basic' }],
+        next_page: '/v2/projects/proj_test_123/customers/cust_123/active_entitlements?starting_after=ent_basic',
+        url: '',
+      }))
+      .mockResolvedValueOnce(createOkResponse({
+        object: 'list',
+        items: [{ object: 'customer.active_entitlement', entitlement_id: 'ent_premium' }],
+        next_page: null,
+        url: '',
+      }));
+
+    await expect(client.hasEntitlement('cust_123', 'ent_premium')).resolves.toBe(true);
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('starting_after=ent_basic'),
+      expect.any(Object)
+    );
+  });
+
+  it('retries a retryable GET and honors Retry-After', async () => {
+    const headers = new Headers({ 'Retry-After': '0' });
+    (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(createErrorResponse({
+        message: 'Rate limit exceeded',
+        retryable: true,
+      }, 429, headers))
+      .mockResolvedValueOnce(createOkResponse({ object: 'list', items: [], next_page: null, url: '' }));
+
+    await expect(client.hasActiveEntitlements('cust_123')).resolves.toBe(false);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 });

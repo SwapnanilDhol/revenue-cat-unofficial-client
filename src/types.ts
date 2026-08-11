@@ -258,6 +258,7 @@ export interface RevenueCatApiError {
   message: string;
   doc_url?: string;
   retryable?: boolean;
+  backoff_ms?: number;
   referenced_object_ids?: string[];
 }
 

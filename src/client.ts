@@ -18,7 +18,6 @@ import type {
   Subscription,
   Invoice,
   App,
-  RevenueCatApiError,
   CreateCustomerRequest,
   GrantEntitlementRequest,
   RevokeEntitlementRequest,
@@ -32,12 +31,8 @@ import type {
   ListCustomerSubscriptionsParams,
   ListCustomerPurchasesParams,
 } from "./types";
-import {
-  RevenueCatError,
-  RevenueCatConfigError,
-  RevenueCatResponseTooLargeError,
-  RevenueCatTransportError,
-} from "./errors";
+import { RevenueCatConfigError, RevenueCatTransportError } from "./errors";
+import { RevenueCatTransport, type RevenueCatRequest } from "./transport";
 
 const BASE_URL = "https://api.revenuecat.com/v2";
 
@@ -63,14 +58,6 @@ export interface RevenueCatClientOptions {
   maxResponseBytes?: number;
 }
 
-type RequestOptions = {
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  path: string;
-  body?: unknown;
-  headers?: Record<string, string>;
-  query?: Record<string, string | string[] | undefined>;
-};
-
 export class RevenueCatClient {
   private readonly apiKey: string;
   private readonly projectId: string;
@@ -80,6 +67,7 @@ export class RevenueCatClient {
   private readonly maxAttempts: number;
   private readonly maxRetryDelayMs: number;
   private readonly maxResponseBytes: number;
+  private readonly transport: RevenueCatTransport;
 
   constructor(options: RevenueCatClientOptions) {
     if (!options.apiKey) {
@@ -100,6 +88,15 @@ export class RevenueCatClient {
     this.maxAttempts = positiveInteger(options.maxAttempts ?? 2, "maxAttempts");
     this.maxRetryDelayMs = nonNegativeInteger(options.maxRetryDelayMs ?? 5_000, "maxRetryDelayMs");
     this.maxResponseBytes = positiveInteger(options.maxResponseBytes ?? 1_048_576, "maxResponseBytes");
+    this.transport = new RevenueCatTransport({
+      apiKey: this.apiKey,
+      baseUrl: this.baseUrl,
+      fetch: this.fetchImpl,
+      timeoutMs: this.timeoutMs,
+      maxAttempts: this.maxAttempts,
+      maxRetryDelayMs: this.maxRetryDelayMs,
+      maxResponseBytes: this.maxResponseBytes,
+    });
   }
 
   // ── Convenience factory ───────────────────────────────────
@@ -314,7 +311,7 @@ export class RevenueCatClient {
     invoiceId: string
   ): Promise<Blob> {
     const url = `${this.baseUrl}/projects/${this.pId}/customers/${encodeURIComponent(customerId)}/invoices/${encodeURIComponent(invoiceId)}/file`;
-    const response = await this.execute({
+    const response = await this.transport.response({
       method: "GET",
       path: url,
       headers: { Accept: "application/octet-stream" },
@@ -988,65 +985,13 @@ export class RevenueCatClient {
 
   // ── Internal HTTP layer ───────────────────────────────────
 
-  private async request<T>(opts: RequestOptions): Promise<T> {
-    const response = await this.execute(opts);
-    const text = await readResponseText(response, this.maxResponseBytes);
-    if (!text || text.trim() === "") {
-      return {} as T;
-    }
-    return JSON.parse(text) as T;
+  private request<T>(opts: RevenueCatRequest): Promise<T> {
+    return this.transport.request<T>(opts);
   }
 
   /** For endpoints that return 200 with no body. */
-  private async requestEmpty(opts: RequestOptions): Promise<void> {
-    await this.execute(opts);
-  }
-
-  private async execute(opts: RequestOptions): Promise<Response> {
-    const url = opts.path.startsWith("http") ? opts.path : this.buildUrl(opts);
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${this.apiKey}`,
-      "Content-Type": "application/json",
-      ...opts.headers,
-    };
-    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
-      try {
-        const response = await this.fetchImpl(url, {
-          method: opts.method,
-          headers,
-          body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-          signal: controller.signal,
-        });
-
-        if (response.ok) return response;
-
-        const error = await revenueCatError(response, this.maxResponseBytes);
-        const canRetry =
-          opts.method === "GET" &&
-          attempt < this.maxAttempts &&
-          isRetryable(error) &&
-          (error.retryAfterMs ?? retryDelayForAttempt(attempt)) <= this.maxRetryDelayMs;
-
-        if (!canRetry) throw error;
-        await delay(error.retryAfterMs ?? retryDelayForAttempt(attempt));
-      } catch (error) {
-        if (error instanceof RevenueCatError || error instanceof RevenueCatResponseTooLargeError) {
-          throw error;
-        }
-        if (opts.method === "GET" && attempt < this.maxAttempts) {
-          await delay(retryDelayForAttempt(attempt));
-          continue;
-        }
-        throw new RevenueCatTransportError("RevenueCat request failed.", { cause: error });
-      } finally {
-        clearTimeout(timeout);
-      }
-    }
-
-    throw new RevenueCatTransportError("RevenueCat request exhausted all attempts.");
+  private requestEmpty(opts: RevenueCatRequest): Promise<void> {
+    return this.transport.requestEmpty(opts);
   }
 
   private async someActiveEntitlement(
@@ -1076,20 +1021,6 @@ export class RevenueCatClient {
     throw new RevenueCatTransportError("RevenueCat pagination exceeded 100 pages.");
   }
 
-  private buildUrl(opts: RequestOptions): string {
-    const url = new URL(`${this.baseUrl}${opts.path}`);
-    if (opts.query) {
-      for (const [key, value] of Object.entries(opts.query)) {
-        if (value === undefined) continue;
-        if (Array.isArray(value)) {
-          for (const v of value) url.searchParams.append(key, v);
-        } else {
-          url.searchParams.set(key, value);
-        }
-      }
-    }
-    return url.toString();
-  }
 }
 
 // ── Utility ─────────────────────────────────────────────────
@@ -1122,78 +1053,4 @@ function nonNegativeInteger(value: number, name: string): number {
     throw new RevenueCatConfigError(`${name} must be a non-negative integer.`);
   }
   return value;
-}
-
-async function revenueCatError(
-  response: Response,
-  maximumBytes: number
-): Promise<RevenueCatError> {
-  let body: RevenueCatApiError = { message: response.statusText };
-  try {
-    const text = await readResponseText(response, maximumBytes);
-    if (text) body = JSON.parse(text) as RevenueCatApiError;
-  } catch (error) {
-    if (error instanceof RevenueCatResponseTooLargeError) throw error;
-  }
-
-  const retryAfterMs = parseRetryAfter(response.headers.get("Retry-After")) ?? body.backoff_ms;
-  return new RevenueCatError(response.status, body, retryAfterMs);
-}
-
-function parseRetryAfter(value: string | null): number | undefined {
-  if (!value) return undefined;
-  const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1_000);
-  const date = Date.parse(value);
-  if (Number.isNaN(date)) return undefined;
-  return Math.max(0, date - Date.now());
-}
-
-function isRetryable(error: RevenueCatError): boolean {
-  return error.body.retryable === true || [423, 429, 500, 502, 503, 504].includes(error.statusCode);
-}
-
-function retryDelayForAttempt(attempt: number): number {
-  return 250 * 2 ** (attempt - 1);
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-async function readResponseText(response: Response, maximumBytes: number): Promise<string> {
-  const contentLength = Number(response.headers.get("Content-Length"));
-  if (Number.isFinite(contentLength) && contentLength > maximumBytes) {
-    throw new RevenueCatResponseTooLargeError(maximumBytes);
-  }
-
-  if (!response.body) {
-    const text = await response.text();
-    if (new TextEncoder().encode(text).byteLength > maximumBytes) {
-      throw new RevenueCatResponseTooLargeError(maximumBytes);
-    }
-    return text;
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    totalBytes += value.byteLength;
-    if (totalBytes > maximumBytes) {
-      await reader.cancel();
-      throw new RevenueCatResponseTooLargeError(maximumBytes);
-    }
-    chunks.push(value);
-  }
-
-  const output = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    output.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(output);
 }
